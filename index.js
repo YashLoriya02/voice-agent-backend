@@ -15,7 +15,6 @@ app.get("/", (_, res) => {
     });
 });
 
-
 app.get("/test-groq", async (_, res) => {
     try {
         const groq = new Groq({
@@ -50,79 +49,76 @@ app.get("/test-groq", async (_, res) => {
 }
 );
 
-app.get(
-    "/deepgram/token",
-
-    async (_, res) => {
-        try {
-            if (!process.env.DEEPGRAM_API_KEY) {
-                return res.status(500).json({
-                    success: false,
-                    error: "DEEPGRAM_API_KEY is missing",
-                });
-            }
-
-            const response = await fetch(
-                "https://api.deepgram.com/v1/auth/grant",
-                {
-                    method: "POST",
-
-                    headers: {
-                        Authorization:
-                            `Token ${process.env.DEEPGRAM_API_KEY}`,
-
-                        "Content-Type":
-                            "application/json",
-                    },
-
-                    body: JSON.stringify({
-                        ttl_seconds: 300,
-                    }),
-                },
-            );
-
-            const data =
-                await response.json();
-
-            if (!response.ok) {
-                console.error(
-                    "Deepgram token error:",
-                    data,
-                );
-
-                return res.status(
-                    response.status,
-                ).json({
-                    success: false,
-                    error:
-                        data?.err_msg ||
-                        "Unable to create Deepgram token",
-                });
-            }
-
-            return res.json({
-                success: true,
-
-                accessToken:
-                    data.access_token,
-
-                expiresIn:
-                    data.expires_in,
-            });
-        } catch (error) {
-            console.error(
-                "DEEPGRAM TOKEN ERROR:",
-                error,
-            );
-
+app.get("/deepgram/token", async (_, res) => {
+    try {
+        if (!process.env.DEEPGRAM_API_KEY) {
             return res.status(500).json({
                 success: false,
+                error: "DEEPGRAM_API_KEY is missing",
+            });
+        }
+
+        const response = await fetch(
+            "https://api.deepgram.com/v1/auth/grant",
+            {
+                method: "POST",
+
+                headers: {
+                    Authorization:
+                        `Token ${process.env.DEEPGRAM_API_KEY}`,
+
+                    "Content-Type":
+                        "application/json",
+                },
+
+                body: JSON.stringify({
+                    ttl_seconds: 300,
+                }),
+            },
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            console.error(
+                "Deepgram token error:",
+                data,
+            );
+
+            return res.status(
+                response.status,
+            ).json({
+                success: false,
                 error:
-                    error.message ||
+                    data?.err_msg ||
                     "Unable to create Deepgram token",
             });
         }
-    },
+
+        return res.json({
+            success: true,
+
+            accessToken:
+                data.access_token,
+
+            expiresIn:
+                data.expires_in,
+        });
+    } catch (error) {
+        console.error(
+            "DEEPGRAM TOKEN ERROR:",
+            error,
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                error.message ||
+                "Unable to create Deepgram token",
+        });
+    }
+},
 );
 
 app.post("/deepgram/tts", async (req, res) => {
@@ -223,13 +219,13 @@ app.post("/deepgram/tts", async (req, res) => {
 
 app.post("/voice-agent/execute", async (req, res) => {
     try {
-        const { text, currentDateTime } = req.body;
+        const {
+            text,
+            currentDateTime,
+            history,
+        } = req.body;
 
-        if (
-            typeof text !== "string" ||
-            text.trim().length === 0
-        ) {
-
+        if (typeof text !== "string" || !text.trim()) {
             return res
                 .status(400)
                 .json({
@@ -241,17 +237,8 @@ app.post("/voice-agent/execute", async (req, res) => {
         const result = await routeVoiceCommand({
             text: text.trim(),
             currentDateTime,
+            history: Array.isArray(history) ? history : [],
         });
-
-
-        console.log(
-            "AGENT RESULT:",
-            JSON.stringify(
-                result,
-                null,
-                2
-            )
-        );
 
         return res.json(result);
     } catch (error) {
@@ -264,12 +251,11 @@ app.post("/voice-agent/execute", async (req, res) => {
             .status(500)
             .json({
                 success: false,
-                error: error.message || "Unable to process voice command",
+                error: "Unable to process voice command",
             });
     }
 }
 );
-
 
 app.listen(8080, () => {
     console.log("Server running on port 8080");

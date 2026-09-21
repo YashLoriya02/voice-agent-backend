@@ -1,19 +1,24 @@
 import Groq from "groq-sdk";
 import dotenv from "dotenv";
+import { evaluate } from "mathjs";
 
 dotenv.config();
 
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-});
+const groq =
+    new Groq({
+        apiKey:
+            process.env.GROQ_API_KEY,
+    });
 
 const tools = [
     {
         type: "function",
+
         function: {
             name: "call_contact",
+
             description:
-                "Find a contact on the user's phone and initiate a call or dial action.",
+                "Call or dial a named contact on the user's phone.",
 
             parameters: {
                 type: "object",
@@ -21,7 +26,6 @@ const tools = [
                 properties: {
                     name: {
                         type: "string",
-                        description: "The contact name spoken by the user.",
                     },
                 },
 
@@ -32,6 +36,7 @@ const tools = [
         },
     },
 
+
     {
         type: "function",
 
@@ -39,28 +44,23 @@ const tools = [
             name: "set_alarm",
 
             description:
-                "Set an alarm at a specific local time.",
+                "Set an alarm at a specific clock time.",
 
             parameters: {
                 type: "object",
 
                 properties: {
+
                     hour: {
                         type: "integer",
-                        description:
-                            "Hour in 24-hour format from 0 to 23.",
                     },
 
                     minute: {
                         type: "integer",
-                        description:
-                            "Minute from 0 to 59.",
                     },
 
                     label: {
                         type: "string",
-                        description:
-                            "Optional alarm label.",
                     },
                 },
 
@@ -74,305 +74,905 @@ const tools = [
         },
     },
 
+
     {
         type: "function",
 
         function: {
             name: "set_timer",
-            description: "Start a countdown timer for a specified duration.",
+
+            description:
+                "Start a countdown timer.",
+
             parameters: {
                 type: "object",
+
                 properties: {
+
                     seconds: {
                         type: "integer",
-                        description: "Total timer duration in seconds.",
                     },
+
                     label: {
                         type: "string",
-                        description: "Optional timer label.",
                     },
                 },
-                required: ["seconds"],
+
+                required: [
+                    "seconds",
+                ],
+
                 additionalProperties: false,
             },
         },
     },
+
+
     {
         type: "function",
+
         function: {
             name: "open_app",
-            description: "Open an installed application on the user's phone.",
+
+            description:
+                "Open an application installed on the user's phone.",
+
             parameters: {
                 type: "object",
+
                 properties: {
+
                     app_name: {
                         type: "string",
-                        description: "Human-readable app name such as YouTube, Spotify or WhatsApp.",
                     },
                 },
-                required: ["app_name"],
+
+                required: [
+                    "app_name",
+                ],
+
                 additionalProperties: false,
             },
         },
     },
 
+
+    // ----------------------------------------------------------
+    // CALCULATOR
+    // ----------------------------------------------------------
+
     {
         type: "function",
+
+        function: {
+            name: "calculate",
+
+            description:
+                "Perform a mathematical calculation. Use this instead of estimating arithmetic yourself.",
+
+            parameters: {
+                type: "object",
+
+                properties: {
+
+                    expression: {
+                        type: "string",
+
+                        description:
+                            "A mathematical expression such as 2+2 or (520*7)/4.",
+                    },
+                },
+
+                required: [
+                    "expression",
+                ],
+
+                additionalProperties: false,
+            },
+        },
+    },
+
+
+    // ----------------------------------------------------------
+    // GENERAL AI
+    // ----------------------------------------------------------
+
+    {
+        type: "function",
+
+        function: {
+            name: "answer_user",
+
+            description:
+                "Answer general knowledge, casual conversation, explanations, jokes, greetings, everyday advice, or other requests that do not require current internet information.",
+
+            parameters: {
+                type: "object",
+
+                properties: {
+
+                    message: {
+                        type: "string",
+
+                        description:
+                            "A concise conversational response, preferably under 80 words.",
+                    },
+                },
+
+                required: [
+                    "message",
+                ],
+
+                additionalProperties: false,
+            },
+        },
+    },
+
+
+    // ----------------------------------------------------------
+    // WEB
+    // ----------------------------------------------------------
+
+    {
+        type: "function",
+
+        function: {
+            name: "search_web",
+
+            description:
+                "Search the live web when the request depends on current, recent, changing, or explicitly requested online information.",
+
+            parameters: {
+                type: "object",
+
+                properties: {
+
+                    query: {
+                        type: "string",
+                    },
+                },
+
+                required: [
+                    "query",
+                ],
+
+                additionalProperties: false,
+            },
+        },
+    },
+
+
+    // ----------------------------------------------------------
+    // CLARIFICATION
+    // ----------------------------------------------------------
+
+    {
+        type: "function",
+
         function: {
             name: "ask_user",
-            description: "Ask the user for information that is required before an action can be executed.",
+
+            description:
+                "Ask the user for essential missing information required to complete their request.",
+
             parameters: {
                 type: "object",
+
                 properties: {
+
                     message: {
                         type: "string",
                     },
                 },
-                required: ["message"],
+
+                required: [
+                    "message",
+                ],
+
                 additionalProperties: false,
             },
         },
     },
 
+
+    // ----------------------------------------------------------
+    // TRUE FALLBACK
+    // ----------------------------------------------------------
+
     {
         type: "function",
+
         function: {
             name: "unsupported",
-            description: "Use when the user requests an action that this assistant does not currently support.",
+
+            description:
+                "Use ONLY when the request cannot be completed as a device action, calculation, conversational response, general answer, or web search.",
+
             parameters: {
                 type: "object",
+
                 properties: {
+
                     message: {
                         type: "string",
                     },
                 },
-                required: ["message"],
+
+                required: [
+                    "message",
+                ],
+
                 additionalProperties: false,
             },
         },
     },
 ];
 
+
+// ============================================================
+// MAIN ROUTER
+// ============================================================
+
 export async function routeVoiceCommand({
     text,
     currentDateTime,
+    history = [],
 }) {
-    const now = currentDateTime || new Date().toISOString();
 
-    const response =
-        await groq.chat.completions.create({
-            model: "openai/gpt-oss-20b",
-            temperature: 0,
-            messages: [
-                {
-                    role: "system",
-                    content: `
-You are the command router for an Android voice assistant.
+    const now =
+        currentDateTime ||
+        new Date().toISOString();
 
-You DO NOT execute actions yourself.
 
-Your only responsibility is to understand the user's request and select exactly one available tool.
+    const cleanHistory =
+        Array.isArray(history)
+            ? history
+                .slice(-8)
+                .filter(
+                    item =>
+                        item &&
+                        (
+                            item.role ===
+                            "user" ||
+                            item.role ===
+                            "assistant"
+                        ) &&
+                        typeof item.content ===
+                        "string"
+                )
+            : [];
+
+
+    const messages = [
+
+        {
+            role: "system",
+
+            content: `
+You are the brain of a fast voice-first AI agent running on an Android phone.
 
 Current datetime:
 ${now}
 
-IMPORTANT RULES:
+Your job is to determine the BEST capability for the user's request.
 
-1. Never claim that an action has already been completed.
+CAPABILITY PRIORITY:
 
-2. Never invent contact information.
+1. DEVICE ACTION
+2. DETERMINISTIC CALCULATION
+3. NORMAL AI RESPONSE
+4. LIVE WEB SEARCH
+5. UNSUPPORTED
 
-3. Never invent phone numbers.
+DEVICE TOOLS:
 
-4. Never invent Android package names.
+- call_contact
+- set_alarm
+- set_timer
+- open_app
 
-5. Use call_contact when the user wants to call a named person.
-
-6. Use set_alarm when the user asks for an alarm at a specific clock time.
-
-7. Use set_timer when the user asks for a countdown duration.
-
-8. Use open_app when the user asks to open an application.
-
-9. If information required to execute the action is missing, use ask_user.
-
-10. If the requested action is not currently supported, use unsupported.
-
-11. Convert timer durations into total seconds.
-
-12. Convert alarm times into 24-hour format.
-
-13. Preserve contact names as closely as possible to what the user said.
-
-14. Preserve application names as human-readable names.
-
-15. Do not choose a supported tool if it does not actually match the user's request.
+Always prefer these tools whenever they match the user's intent.
 
 Examples:
 
-User:
-Call Akruti
+"Call Papa"
+→ call_contact
 
-Tool:
-call_contact
-name = Akruti
+"Ring Mrs Snow"
+→ call_contact
 
+"Wake me at 7 tomorrow"
+→ set_alarm
 
-User:
-Give Archie a call
+"Timer for 10 minutes"
+→ set_timer
 
-Tool:
-call_contact
-name = Archie
-
-
-User:
-Call someone
-
-Tool:
-ask_user
-message = Who would you like me to call?
+"Open YouTube"
+→ open_app
 
 
-User:
-Set a timer for 10 minutes
+CALCULATIONS:
 
-Tool:
-set_timer
-seconds = 600
+Use calculate for arithmetic.
 
+Examples:
 
-User:
-Timer for two and a half minutes
+"What is 2 plus 2?"
+→ calculate(expression="2+2")
 
-Tool:
-set_timer
-seconds = 150
+"What's 17 percent of 520?"
+→ calculate(expression="520*0.17")
 
 
-User:
-Wake me up at 7:30 AM
+GENERAL AI:
 
-Tool:
-set_alarm
-hour = 7
-minute = 30
+Use answer_user for:
+
+- explanations
+- definitions
+- greetings
+- jokes
+- normal conversation
+- brainstorming
+- general knowledge
+- evergreen facts
+- simple advice
+- "what can you do?"
+- follow-up conversation
+
+Examples:
+
+"What is an IPO?"
+→ answer_user
+
+"Good morning"
+→ answer_user
+
+"Tell me a joke"
+→ answer_user
+
+"What can you do?"
+→ answer_user
+
+"Explain cloud computing simply"
+→ answer_user
 
 
-User:
-Set an alarm for 11 PM called medicine
+Keep voice answers concise.
 
-Tool:
-set_alarm
-hour = 23
-minute = 0
-label = medicine
+Prefer under 80 words.
 
+Sound natural when spoken aloud.
 
-User:
-Open YouTube
-
-Tool:
-open_app
-app_name = YouTube
+Do not use markdown formatting unless absolutely necessary.
 
 
-User:
-Set an alarm
+WEB SEARCH:
 
-Tool:
-ask_user
-message = What time should I set the alarm for?
+Use search_web ONLY when fresh/current external information is materially required.
+
+Examples:
+
+"What's the latest AI news?"
+→ search_web
+
+"Which IPOs are open today?"
+→ search_web
+
+"Search the web for OpenAI news"
+→ search_web
+
+"What's happening in the stock market today?"
+→ search_web
+
+"What is an IPO?"
+→ DO NOT search.
+Use answer_user.
+
+"What is Kubernetes?"
+→ DO NOT search.
+Use answer_user.
+
+"Tell me a joke"
+→ DO NOT search.
+Use answer_user.
 
 
-User:
-Send Akruti a WhatsApp message
+CLARIFICATION:
 
-Tool:
-unsupported
-message = Messaging is not currently supported.
+Use ask_user when essential information is missing.
+
+Example:
+
+"Call someone"
+→ ask_user("Who would you like me to call?")
+
+
+UNSUPPORTED:
+
+Use unsupported ONLY when none of the other capabilities can reasonably help.
+
+Never claim that a phone action happened yourself.
+Actual device actions are executed by the Flutter app.
+
+Never invent contacts or phone numbers.
 `,
-                },
-                {
-                    role: "user",
-                    content: text,
-                },
-            ],
-            tools: tools,
+        },
+
+        ...cleanHistory,
+
+        {
+            role: "user",
+            content: text,
+        },
+    ];
+
+
+    const response =
+        await groq.chat.completions.create({
+
+            model:
+                "openai/gpt-oss-20b",
+
+            temperature: 0,
+
+            messages,
+
+            tools,
+
             tool_choice: "required",
         });
 
 
-    const message = response.choices?.[0]?.message;
-    const toolCall = message?.tool_calls?.[0];
+    const toolCall =
+        response
+            .choices?.[0]
+            ?.message
+            ?.tool_calls?.[0];
+
 
     if (!toolCall) {
+
         throw new Error(
-            "Model did not return a tool call."
+            "Agent returned no tool call"
         );
     }
 
-    const toolName = toolCall.function.name;
+
+    const toolName =
+        toolCall.function.name;
+
+
     let args = {};
 
     try {
-        args = JSON.parse(
-            toolCall.function.arguments
-        );
 
-    } catch (error) {
-        console.error(
-            "Raw tool arguments:",
-            toolCall.function.arguments
-        );
+        args =
+            JSON.parse(
+                toolCall.function.arguments
+            );
+
+    } catch (_) {
+
         throw new Error(
-            "Model returned invalid tool arguments."
+            "Invalid agent tool arguments"
         );
     }
+
+
+    // ==========================================================
+    // GENERAL RESPONSE
+    // ==========================================================
 
     if (
-        ![
-            "call_contact",
-            "set_alarm",
-            "set_timer",
-            "open_app",
-            "ask_user",
-            "unsupported",
-        ].includes(toolName)
+        toolName ===
+        "answer_user"
     ) {
-        throw new Error(
-            `Unknown tool returned: ${toolName}`
+
+        return {
+
+            success: true,
+
+            type:
+                "assistant_response",
+
+            source:
+                "llm",
+
+            message:
+                limitWords(
+                    args.message,
+                    90
+                ),
+        };
+    }
+
+
+    // ==========================================================
+    // CALCULATOR
+    // ==========================================================
+
+    if (
+        toolName ===
+        "calculate"
+    ) {
+
+        const expression =
+            String(
+                args.expression || ""
+            ).trim();
+
+
+        if (
+            expression.length === 0 ||
+            expression.length > 100
+        ) {
+
+            return {
+
+                success: true,
+
+                type:
+                    "unsupported",
+
+                message:
+                    "I couldn't understand that calculation.",
+            };
+        }
+
+
+        /*
+         * Only allow simple mathematical characters.
+         *
+         * Don't blindly execute arbitrary model output.
+         */
+        if (
+            !/^[0-9+\-*/().%^,\s]+$/
+                .test(expression)
+        ) {
+
+            return {
+
+                success: true,
+
+                type:
+                    "unsupported",
+
+                message:
+                    "I couldn't safely evaluate that calculation.",
+            };
+        }
+
+
+        try {
+
+            const result =
+                evaluate(expression);
+
+
+            return {
+
+                success: true,
+
+                type:
+                    "assistant_response",
+
+                source:
+                    "calculator",
+
+                message:
+                    `The answer is ${result}.`,
+            };
+
+        } catch (_) {
+
+            return {
+
+                success: true,
+
+                type:
+                    "unsupported",
+
+                message:
+                    "I couldn't calculate that.",
+            };
+        }
+    }
+
+
+    // ==========================================================
+    // WEB SEARCH
+    // ==========================================================
+
+    if (
+        toolName ===
+        "search_web"
+    ) {
+
+        const query =
+            String(
+                args.query || text
+            ).trim();
+
+
+        return await searchWeb(
+            query
         );
     }
 
 
-    if (toolName === "ask_user") {
+    // ==========================================================
+    // ASK USER
+    // ==========================================================
+
+    if (
+        toolName ===
+        "ask_user"
+    ) {
 
         return {
+
             success: true,
-            type: "ask_user",
+
+            type:
+                "ask_user",
+
             message:
                 args.message ||
-                "Could you provide more information?",
+                "Could you tell me a little more?",
         };
     }
 
 
-    if (toolName === "unsupported") {
+    // ==========================================================
+    // UNSUPPORTED
+    // ==========================================================
+
+    if (
+        toolName ===
+        "unsupported"
+    ) {
+
         return {
+
             success: true,
-            type: "unsupported",
+
+            type:
+                "unsupported",
+
             message:
                 args.message ||
-                "That action is not supported yet.",
+                "I can't do that yet.",
         };
+    }
+
+
+    // ==========================================================
+    // DEVICE TOOL
+    // ==========================================================
+
+    const deviceTools = [
+
+        "call_contact",
+
+        "set_alarm",
+
+        "set_timer",
+
+        "open_app",
+    ];
+
+
+    if (
+        !deviceTools.includes(
+            toolName
+        )
+    ) {
+
+        throw new Error(
+            `Unknown tool: ${toolName}`
+        );
     }
 
 
     return {
+
         success: true,
-        type: "tool_call",
-        tool: toolName,
-        arguments: args,
+
+        type:
+            "tool_call",
+
+        tool:
+            toolName,
+
+        arguments:
+            args,
     };
+}
+
+// ============================================================
+// WEB SEARCH
+// ============================================================
+
+async function searchWeb(
+    query
+) {
+
+    /*
+     * Allows us to disable paid/live
+     * web tools without changing Flutter.
+     */
+    if (
+        process.env
+            .ENABLE_WEB_SEARCH ===
+        "false"
+    ) {
+
+        return {
+
+            success: true,
+
+            type:
+                "unsupported",
+
+            message:
+                "Live web search isn't enabled right now.",
+        };
+    }
+
+
+    try {
+
+        const response =
+            await groq
+                .chat
+                .completions
+                .create({
+
+                    model:
+                        "openai/gpt-oss-20b",
+
+                    reasoning_effort:
+                        "low",
+
+                    max_completion_tokens:
+                        350,
+
+                    messages: [
+
+                        {
+                            role:
+                                "system",
+
+                            content: `
+You are providing a short spoken answer for a mobile AI voice assistant.
+
+Search the web for current information.
+
+Answer the user's question directly.
+
+Rules:
+
+- Maximum 90 words.
+- Prefer 2-4 sentences.
+- No markdown headings.
+- No long lists.
+- Do not mention that you are an AI.
+- Avoid reading URLs aloud.
+- If reliable information cannot be found, say so.
+`,
+                        },
+
+                        {
+                            role:
+                                "user",
+
+                            content:
+                                query,
+                        },
+                    ],
+
+                    tools: [
+                        {
+                            type:
+                                "browser_search",
+                        },
+                    ],
+
+                    tool_choice:
+                        "required",
+                });
+
+
+        const answer =
+            response
+                .choices?.[0]
+                ?.message
+                ?.content
+                ?.trim();
+
+
+        if (!answer) {
+
+            throw new Error(
+                "No search answer"
+            );
+        }
+
+
+        return {
+
+            success: true,
+
+            type:
+                "assistant_response",
+
+            source:
+                "web",
+
+            message:
+                limitWords(
+                    answer,
+                    90
+                ),
+        };
+
+    } catch (error) {
+
+        console.error(
+            "WEB SEARCH ERROR:",
+            error
+        );
+
+
+        return {
+
+            success: true,
+
+            type:
+                "unsupported",
+
+            message:
+                "I couldn't access live web information right now.",
+        };
+    }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function limitWords(
+    value,
+    maximum
+) {
+
+    const text =
+        String(
+            value || ""
+        ).trim();
+
+
+    const words =
+        text.split(/\s+/);
+
+
+    if (
+        words.length <=
+        maximum
+    ) {
+
+        return text;
+    }
+
+
+    return (
+        words
+            .slice(
+                0,
+                maximum
+            )
+            .join(" ") +
+        "..."
+    );
 }
