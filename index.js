@@ -1,6 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import Groq from "groq-sdk";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { routeVoiceCommand } from "./services/voice-agent.service.js";
 
 dotenv.config();
@@ -142,10 +144,20 @@ app.post("/deepgram/tts", async (req, res) => {
             });
         }
 
+        // Raw PCM can be played while bytes are still arriving. The previous
+        // MP3 path buffered the complete response before Flutter could start.
         const params = new URLSearchParams({
             model: "aura-2-thalia-en",
-            encoding: "mp3",
+            encoding: "linear16",
+            container: "none",
+            sample_rate: "24000",
             speed: "1.1",
+        });
+
+        const abortController = new AbortController();
+
+        res.once("close", () => {
+            abortController.abort();
         });
 
         const deepgramResponse = await fetch(
@@ -164,6 +176,8 @@ app.post("/deepgram/tts", async (req, res) => {
                 body: JSON.stringify({
                     text: text.trim(),
                 }),
+
+                signal: abortController.signal,
             }
         );
 
@@ -184,16 +198,15 @@ app.post("/deepgram/tts", async (req, res) => {
             });
         }
 
-        const audioBuffer =
-            Buffer.from(
-                await deepgramResponse.arrayBuffer()
-            );
+        if (!deepgramResponse.body) {
+            throw new Error("Deepgram TTS returned no audio stream");
+        }
 
         res.setHeader(
             "Content-Type",
             deepgramResponse.headers.get(
                 "content-type"
-            ) || "audio/mpeg"
+            ) || "audio/l16;rate=24000"
         );
 
         res.setHeader(
@@ -201,12 +214,33 @@ app.post("/deepgram/tts", async (req, res) => {
             "no-store"
         );
 
-        return res.send(audioBuffer);
+        res.setHeader("X-Audio-Encoding", "linear16");
+        res.setHeader("X-Audio-Sample-Rate", "24000");
+        res.flushHeaders();
+
+        await pipeline(
+            Readable.fromWeb(deepgramResponse.body),
+            res,
+        );
+
+        return;
     } catch (error) {
+        if (
+            error?.name === "AbortError" ||
+            error?.code === "ERR_STREAM_PREMATURE_CLOSE"
+        ) {
+            return;
+        }
+
         console.error(
             "TTS ERROR:",
             error
         );
+
+        if (res.headersSent) {
+            res.end();
+            return;
+        }
 
         return res.status(500).json({
             success: false,
