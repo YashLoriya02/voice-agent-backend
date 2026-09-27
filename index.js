@@ -137,7 +137,7 @@ app.post("/deepgram/tts", async (req, res) => {
             });
         }
 
-        if (text.length > 400) {
+        if (text.length > 2000) {
             return res.status(400).json({
                 success: false,
                 error: "TTS text too long",
