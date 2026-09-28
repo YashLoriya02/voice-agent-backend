@@ -137,10 +137,12 @@ app.post("/deepgram/tts", async (req, res) => {
             });
         }
 
-        if (text.length > 2000) {
-            return res.status(400).json({
+        const normalizedText = text.trim();
+
+        if (normalizedText.length > 2000) {
+            return res.status(413).json({
                 success: false,
-                error: "TTS text too long",
+                error: "TTS text exceeds 2000 characters",
             });
         }
 
@@ -174,7 +176,7 @@ app.post("/deepgram/tts", async (req, res) => {
                 },
 
                 body: JSON.stringify({
-                    text: text.trim(),
+                    text: normalizedText,
                 }),
 
                 signal: abortController.signal,

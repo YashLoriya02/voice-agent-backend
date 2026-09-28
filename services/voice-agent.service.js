@@ -41,6 +41,43 @@ const tools = [
         type: "function",
 
         function: {
+            name: "send_message",
+
+            description:
+                "Prepare a WhatsApp or SMS/Messages message to a named phone contact. The user reviews and taps Send.",
+
+            parameters: {
+                type: "object",
+
+                properties: {
+                    name: {
+                        type: "string",
+                        description: "Contact name from the user's phone.",
+                    },
+
+                    message: {
+                        type: "string",
+                        description: "Exact message text requested by the user.",
+                    },
+
+                    channel: {
+                        type: "string",
+                        enum: ["whatsapp", "messages"],
+                    },
+                },
+
+                required: ["name", "message", "channel"],
+
+                additionalProperties: false,
+            },
+        },
+    },
+
+
+    {
+        type: "function",
+
+        function: {
             name: "set_alarm",
 
             description:
@@ -367,6 +404,7 @@ CAPABILITY PRIORITY:
 DEVICE TOOLS:
 
 - call_contact
+- send_message
 - set_alarm
 - set_timer
 - open_app
@@ -381,6 +419,16 @@ Examples:
 "Ring Mrs Snow"
 → call_contact
 
+"Send hello to Mrs Snow on WhatsApp"
+→ send_message(name="Mrs Snow", message="hello", channel="whatsapp")
+
+"Text Papa using Messages that I will be late"
+→ send_message(name="Papa", message="I will be late", channel="messages")
+
+If the user asks to send/message/text a contact but does not specify WhatsApp
+or Messages, use ask_user and ask exactly which of those two they want.
+Do not choose the messaging channel yourself.
+
 "Wake me at 7 tomorrow"
 → set_alarm
 
@@ -389,6 +437,10 @@ Examples:
 
 "Open YouTube"
 → open_app
+
+open_app supports YouTube, Spotify, WhatsApp, Chrome, Instagram, PUBG/BGMI,
+Zomato, Swiggy, Zepto, Blinkit, Messages, Gallery/Photos, Settings, Camera,
+Gmail/Email, Maps, Groww, and Bajaj Broking.
 
 
 CALCULATIONS:
@@ -754,6 +806,8 @@ Never invent contacts or phone numbers.
     const deviceTools = [
 
         "call_contact",
+
+        "send_message",
 
         "set_alarm",
 
