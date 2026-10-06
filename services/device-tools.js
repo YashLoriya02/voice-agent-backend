@@ -1,5 +1,26 @@
+const messageQueryParameters = {
+  type: 'object',
+  properties: {
+    channel: { type: 'string', enum: ['all', 'whatsapp', 'messages'] },
+    sender: { type: 'string', description: 'Sender or conversation name requested by the user.' },
+    limit: { type: 'integer', minimum: 1, maximum: 10, description: 'Maximum previews to read, default 5.' },
+    unread_only: { type: 'boolean', description: 'True by default: previews not yet spoken by the assistant. False to repeat available previews.' },
+  },
+  required: [], additionalProperties: false,
+};
+
 // Native actions shared by both providers use the same names and arguments.
 export const deviceTools = [
+  {
+    name: 'read_messages',
+    description: 'Read captured WhatsApp or SMS/RCS notification previews aloud ON THE PHONE with on-device speech. Contents never appear in the remote function response. Defaults to all channels and previews not yet spoken. Set unread_only=false to repeat available previews. These are notification previews, not a complete unread inbox.',
+    parameters: messageQueryParameters,
+  },
+  {
+    name: 'check_messages',
+    description: 'Report new WhatsApp or SMS/RCS notification preview counts and senders ON THE PHONE with on-device speech, without reading bodies or marking them spoken. The function response contains only completion status. Defaults to all channels and previews not yet spoken.',
+    parameters: messageQueryParameters,
+  },
   {
     name: 'sleep_agent',
     description: 'End the assistant session and close its app or sheet on Sleep, Exit, or a request to dismiss this assistant. Do not use for sleep advice or alarms.',

@@ -415,6 +415,8 @@ DEVICE TOOLS:
 - control_volume
 - set_brightness
 - get_battery
+- read_messages
+- check_messages
 
 Always prefer these tools whenever they match the user's intent.
 
@@ -452,6 +454,13 @@ set_brightness for brightness, and get_battery for actual battery status.
 For volume set, provide percent; increase/decrease means one system step.
 Never invent device status. Flutter returns the actual result.
 Use sleep_agent to close this assistant on Sleep, Exit, or a dismissal request.
+Use read_messages for "Read my WhatsApp messages", "Read my SMS", or "Read messages from Yash".
+Use check_messages for "Any new messages?" or "Do I have unread WhatsApp messages?".
+channel defaults to all; use whatsapp or messages when explicitly requested.
+For "read more", use unread_only=true. For "repeat those messages", use unread_only=false.
+Preserve channel and sender from the most recent message request for read-more/repeat follow-ups unless the user changes them.
+These tools read available notifications locally on the phone. Never invent message contents or counts,
+claim access to a complete inbox, or confuse reading messages with sending a message.
 
 
 CALCULATIONS:
