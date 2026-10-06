@@ -9,7 +9,8 @@ test('notification tools are registered and returned for local execution', async
     ['Read my WhatsApp messages', 'read_messages', { channel: 'whatsapp' }],
     ['Read SMS from Papa', 'read_messages', { channel: 'messages', sender: 'Papa', limit: 5 }],
     ['Any new messages?', 'check_messages', { channel: 'all' }],
-    ['Repeat those messages', 'read_messages', { unread_only: false }],
+    ['Repeat those messages', 'read_messages', { unread_only: false, read_all: true }],
+    ['Read all unread messages', 'read_messages', { unread_only: true, read_all: true }],
   ]) {
     const client = { chat: { completions: { create: async request => {
       const names = request.tools.map(item => item.function.name);
@@ -18,6 +19,7 @@ test('notification tools are registered and returned for local execution', async
       const definition = request.tools.find(item => item.function.name === tool).function;
       assert.deepEqual(definition.parameters.properties.channel.enum, ['all', 'whatsapp', 'messages']);
       assert.equal(definition.parameters.properties.limit.maximum, 10);
+      assert.equal(definition.parameters.properties.read_all.type, 'boolean');
       return { choices: [{ message: { tool_calls: [{ function: {
         name: tool, arguments: JSON.stringify(args),
       } }] } }] };

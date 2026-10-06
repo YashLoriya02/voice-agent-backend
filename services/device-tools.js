@@ -5,6 +5,7 @@ const messageQueryParameters = {
     sender: { type: 'string', description: 'Sender or conversation name requested by the user.' },
     limit: { type: 'integer', minimum: 1, maximum: 10, description: 'Maximum previews to read, default 5.' },
     unread_only: { type: 'boolean', description: 'True by default: previews not yet spoken by the assistant. False to repeat available previews.' },
+    read_all: { type: 'boolean', description: 'Read every matching captured preview in batches, ignoring limit. Default false. Use true for all/repeat requests.' },
   },
   required: [], additionalProperties: false,
 };
@@ -13,7 +14,7 @@ const messageQueryParameters = {
 export const deviceTools = [
   {
     name: 'read_messages',
-    description: 'Read captured WhatsApp or SMS/RCS notification previews aloud ON THE PHONE with on-device speech. Contents never appear in the remote function response. Defaults to all channels and previews not yet spoken. Set unread_only=false to repeat available previews. These are notification previews, not a complete unread inbox.',
+    description: 'Read captured WhatsApp or SMS/RCS notification previews aloud ON THE PHONE. Defaults to previews not yet spoken. Set unread_only=false for repeat, saved, already-read, or all messages. Set read_all=true to read all matching saved previews in speech batches. These are captured previews, not the complete source inbox. Contents never appear in the remote response.',
     parameters: messageQueryParameters,
   },
   {
