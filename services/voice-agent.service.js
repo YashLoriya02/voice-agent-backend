@@ -1,6 +1,7 @@
 import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import { evaluate } from "mathjs";
+import { deviceTools as additionalDeviceTools } from "./device-tools.js";
 
 dotenv.config();
 
@@ -11,6 +12,7 @@ const groq =
     });
 
 const tools = [
+    ...additionalDeviceTools.map(functionDefinition => ({ type: "function", function: functionDefinition })),
     {
         type: "function",
 
@@ -354,7 +356,7 @@ export async function routeVoiceCommand({
     text,
     currentDateTime,
     history = [],
-}) {
+}, client = groq) {
 
     const now =
         currentDateTime ||
@@ -408,6 +410,11 @@ DEVICE TOOLS:
 - set_alarm
 - set_timer
 - open_app
+- sleep_agent
+- set_torch
+- control_volume
+- set_brightness
+- get_battery
 
 Always prefer these tools whenever they match the user's intent.
 
@@ -438,9 +445,13 @@ Do not choose the messaging channel yourself.
 "Open YouTube"
 → open_app
 
-open_app supports YouTube, Spotify, WhatsApp, Chrome, Instagram, PUBG/BGMI,
-Zomato, Swiggy, Zepto, Blinkit, Messages, Gallery/Photos, Settings, Camera,
-Gmail/Email, Maps, Groww, and Bajaj Broking.
+open_app discovers any installed launchable app by name. Do not restrict it to a fixed list.
+For ambiguous app names, use the clarification answer to retry with the full app name or package name.
+Use set_torch for flashlight control, control_volume for volume changes,
+set_brightness for brightness, and get_battery for actual battery status.
+For volume set, provide percent; increase/decrease means one system step.
+Never invent device status. Flutter returns the actual result.
+Use sleep_agent to close this assistant on Sleep, Exit, or a dismissal request.
 
 
 CALCULATIONS:
@@ -561,7 +572,7 @@ Never invent contacts or phone numbers.
 
 
     const response =
-        await groq.chat.completions.create({
+        await client.chat.completions.create({
 
             model:
                 "openai/gpt-oss-20b",
@@ -804,6 +815,7 @@ Never invent contacts or phone numbers.
     // ==========================================================
 
     const deviceTools = [
+        ...additionalDeviceTools.map(tool => tool.name),
 
         "call_contact",
 
