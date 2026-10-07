@@ -1,16 +1,13 @@
 import express from "express";
 import dotenv from "dotenv";
-import Groq from "groq-sdk";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { routeVoiceCommand } from "./services/voice-agent.service.js";
-import { registerMapsRoutes } from "./services/maps.service.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-registerMapsRoutes(app);
 
 app.get("/", (_, res) => {
     res.json({
@@ -18,40 +15,6 @@ app.get("/", (_, res) => {
         message: "Voice Agent server running",
     });
 });
-
-app.get("/test-groq", async (_, res) => {
-    try {
-        const groq = new Groq({
-            apiKey: process.env.GROQ_API_KEY,
-        });
-
-        const response =
-            await groq.chat.completions.create({
-                model: "openai/gpt-oss-20b",
-                messages: [
-                    {
-                        role: "user",
-                        content: "Say exactly: Groq connection working",
-                    },
-                ],
-                temperature: 0,
-            });
-
-
-        res.json({
-            success: true,
-            response: response.choices?.[0]?.message?.content,
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-        });
-    }
-}
-);
 
 app.get("/deepgram/token", async (_, res) => {
     try {
