@@ -2,6 +2,7 @@ import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import { evaluate } from "mathjs";
 import { deviceTools as additionalDeviceTools } from "./device-tools.js";
+import { routeGmailMapsCommand } from "./gmail-maps-commands.js";
 
 dotenv.config();
 
@@ -358,6 +359,9 @@ export async function routeVoiceCommand({
     history = [],
 }, client = groq) {
 
+    const local = routeGmailMapsCommand(text);
+    if (local) return local;
+
     const now =
         currentDateTime ||
         new Date().toISOString();
@@ -417,8 +421,21 @@ DEVICE TOOLS:
 - get_battery
 - read_messages
 - check_messages
+- read_gmail
+- check_gmail
+- get_driving_route
 
 Always prefer these tools whenever they match the user's intent.
+Use read_gmail for reading mail/emails/Gmail (default unread inbox), check_gmail for unread mail counts.
+Use read_gmail(repeat_last=true) for repeating those emails; unread_only=false includes read inbox emails.
+For last/latest email use limit=1 and unread_only=false unless the user explicitly says unread. Always call the mail tools, even if earlier assistant history says email access is unavailable; the phone reports actual access errors.
+Mail contents are read privately on the device; never invent or try to repeat them remotely.
+For distance/how far/how long by car from my location to a place, use get_driving_route with the destination.
+The Maps tool opens the installed app and reads displayed estimates privately on the phone; it does not call a routing API.
+For reading the current Maps route, set read_current=true. For a follow-up selecting a displayed route number, set choice to that number and read_current=true.
+Maps estimates are spoken locally; do not repeat them remotely.
+Never ask the user's current location for a Maps request: the installed Maps app resolves its own current-location origin. For Navigate to, Take me to, Drive to or Start navigation, set start_navigation=true. Distance/time questions open directions with start_navigation=false.
+Never guess GPS coordinates, distance, travel time or claim a route was calculated without the tool.
 
 Examples:
 

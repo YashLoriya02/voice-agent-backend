@@ -29,3 +29,14 @@ test('notification tools are registered and returned for local execution', async
     });
   }
 });
+
+test('Gmail and Maps commands are registered and returned for device execution', async () => {
+  for (const [tool, args] of [['read_gmail', { unread_only: true, limit: 5 }], ['check_gmail', {}], ['get_driving_route', { destination: 'Mumbai airport' }]]) {
+    const client = { chat: { completions: { create: async request => {
+      assert.ok(request.tools.some(item => item.function.name === tool));
+      assert.ok(request.messages[0].content.includes('Never guess GPS coordinates'));
+      return { choices: [{ message: { tool_calls: [{ function: { name: tool, arguments: JSON.stringify(args) } }] } }] };
+    } } } };
+    assert.deepEqual(await routeVoiceCommand({ text: 'Test command' }, client), { success: true, type: 'tool_call', tool, arguments: args });
+  }
+});

@@ -4,11 +4,13 @@ import Groq from "groq-sdk";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { routeVoiceCommand } from "./services/voice-agent.service.js";
+import { registerMapsRoutes } from "./services/maps.service.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+registerMapsRoutes(app);
 
 app.get("/", (_, res) => {
     res.json({
