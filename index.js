@@ -3,11 +3,15 @@ import dotenv from "dotenv";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { routeVoiceCommand } from "./services/voice-agent.service.js";
+import { cleanSpeechText } from "./services/speech-text.js";
+import { createGroqTestRouter } from "./routes/groq-check.js";
+import { GroqUnavailableError } from "./services/groq-fallback.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(createGroqTestRouter());
 
 app.get("/", (_, res) => {
     res.json({
@@ -102,7 +106,10 @@ app.post("/deepgram/tts", async (req, res) => {
             });
         }
 
-        const normalizedText = text.trim();
+        const normalizedText = cleanSpeechText(text);
+        if (!normalizedText) {
+            return res.status(400).json({ success: false, error: "text has no spoken content" });
+        }
 
         if (normalizedText.length > 2000) {
             return res.status(413).json({
@@ -243,6 +250,15 @@ app.post("/voice-agent/execute", async (req, res) => {
 
         return res.json(result);
     } catch (error) {
+        if (error instanceof GroqUnavailableError) {
+            if (error.status === 429) res.set('Retry-After', String(error.retryAfter));
+            return res.status(error.status).json({
+                success: false, code: error.code,
+                error: error.status === 429
+                    ? "The assistant is temporarily rate limited. Please try again shortly."
+                    : "The assistant service is temporarily unavailable. Please try again.",
+            });
+        }
         console.error(
             "VOICE AGENT ERROR:",
             error

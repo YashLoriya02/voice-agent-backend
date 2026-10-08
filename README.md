@@ -111,6 +111,7 @@ ENABLE_WEB_SEARCH=false
 | --- | --- |
 | `GROQ_API_KEY` | Custom mode's command routing, conversational answers and enabled web search. |
 | `DEEPGRAM_API_KEY` | Backend generation of temporary Deepgram tokens and Custom mode's streamed TTS. |
+| `GROQ_MODELS` | Optional comma-separated fallback order. Defaults to `openai/gpt-oss-20b,openai/gpt-oss-120b,qwen/qwen3.8-27b`. |
 | `ENABLE_WEB_SEARCH` | Optional. The literal value `false` disables live web search; it is enabled when unset. |
 | `VOICE_AGENT_API_URL` | Optional Flutter build define for the backend URL. Defaults to `https://voice-ai-agent-server.vercel.app`. |
 
@@ -217,6 +218,7 @@ Maps determines its own current-location origin. The agent does not request GPS 
 | GET | `/deepgram/token` | Short-lived Deepgram access token |
 | POST | `/deepgram/tts` | Stream PCM16 mono speech at 24 kHz |
 | POST | `/voice-agent/execute` | Route a voice command; phone tools execute in the app |
+| POST | `/groq/test` | Generate a small response and report model availability, attempts and live rate-limit headers |
 
 Example routing check:
 
@@ -227,6 +229,44 @@ curl --request POST http://localhost:8080/voice-agent/execute \
 ```
 
 The response identifies `get_driving_route` with `start_navigation: true`. Curl verifies routing; the installed Android app performs the phone action.
+
+### Groq model fallback and quota checks
+
+Custom mode tries GPT-OSS 20B, then GPT-OSS 120B, then Qwen 3.8 27B after a rate-limit or temporary model failure. Flutter receives the existing response format. SDK retries are disabled; each model gets one bounded attempt. Rate-limited models are temporarily skipped using the provider's reset/retry headers. This cooldown is local to each running backend instance.
+
+The chain shares a 16.5-second budget, including live web search. Browser search can use only the two GPT-OSS models because Qwen does not provide that built-in tool. Invalid API keys and malformed requests stop immediately. If all usable models are limited, the API returns HTTP 429 with `Retry-After`; other exhausted failures return HTTP 503. Switching models can add latency and cannot guarantee available quota.
+
+Qwen is an optional preview fallback with tool support. Set `GROQ_MODELS=openai/gpt-oss-20b,openai/gpt-oss-120b` to use only GPT-OSS. Model availability and account quotas follow [Groq's model catalog](https://console.groq.com/docs/models) and [rate-limit documentation](https://console.groq.com/docs/rate-limits). Billing configuration is not changed by the backend.
+
+Use `POST /groq/test` with a JSON body:
+
+| Body | Behavior |
+| --- | --- |
+| `{}` or `{"error":false}` | Try the normal configured fallback chain |
+| `{"error":true}` | Simulate the primary model being limited; make the real request through 120B or the next fallback. The primary model is not called and its simulation does not change its cooldown. |
+| `{"model":"20b"}` | Probe only 20B, reporting its own success/limit |
+| `{"model":"120b"}` | Probe only 120B |
+| `{"model":"third"}` | Probe only the third configured model |
+| `{"all":true}` | Probe every configured model independently and return each result |
+| `{"model":"120b","fallback":true}` | Start at 120B and permit the remaining configured fallbacks |
+
+Optional `text` changes the small test prompt. Successful responses include `model`, `message` such as `API is working via openai/gpt-oss-120b model.`, `response`, `limits`, and `attempts`. A simulated error is explicitly labelled; actual quota values come from the provider headers. These checks make real generation calls and consume the connected account's quota. Missing headers are returned as `null`, not as zero remaining quota.
+
+```bash
+curl --request POST http://localhost:8080/groq/test \
+  --header 'Content-Type: application/json' \
+  --data '{"error":true}'
+```
+
+On Windows PowerShell:
+
+```powershell
+Invoke-RestMethod -Uri 'http://localhost:8080/groq/test' -Method Post -ContentType 'application/json' -Body '{"all":true}'
+```
+
+### Spoken responses
+
+Custom speech removes markdown markers and emoji before synthesis, while retaining numbers, units and local-language text. Long responses use sequential requests below the TTS endpoint's size limit and wait for actual playback to drain with a response-length timeout. Starting a new reply cancels the earlier speech generation. Private message/mail formatting cleanup stays on the phone. Deepgram Voice Agent uses a plain-text, emoji-free reply style and clears old reply/audio state before executing a new device action.
 
 ## Tests
 

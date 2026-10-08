@@ -1,16 +1,12 @@
-import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import { evaluate } from "mathjs";
 import { deviceTools as additionalDeviceTools } from "./device-tools.js";
 import { routeGmailMapsCommand } from "./gmail-maps-commands.js";
+import { voiceReply } from "./speech-text.js";
+import { groqClient as groq, completeWithFallback, browserSearchModels, GroqUnavailableError } from "./groq-fallback.js";
 
 dotenv.config();
 
-const groq =
-    new Groq({
-        apiKey:
-            process.env.GROQ_API_KEY,
-    });
 
 const tools = [
     ...additionalDeviceTools.map(functionDefinition => ({ type: "function", function: functionDefinition })),
@@ -361,6 +357,7 @@ export async function routeVoiceCommand({
 
     const local = routeGmailMapsCommand(text);
     if (local) return local;
+    const started = Date.now();
 
     const now =
         currentDateTime ||
@@ -535,7 +532,8 @@ Prefer under 80 words.
 
 Sound natural when spoken aloud.
 
-Do not use markdown formatting unless absolutely necessary.
+Use plain spoken text only. Never use markdown markers, tables, emojis or emoji names.
+Give a complete concise answer; avoid introductions and long lists.
 
 
 WEB SEARCH:
@@ -599,11 +597,8 @@ Never invent contacts or phone numbers.
     ];
 
 
-    const response =
-        await client.chat.completions.create({
-
-            model:
-                "openai/gpt-oss-20b",
+    const { data: response } =
+        await completeWithFallback({
 
             temperature: 0,
 
@@ -612,7 +607,7 @@ Never invent contacts or phone numbers.
             tools,
 
             tool_choice: "required",
-        });
+        }, { client });
 
 
     const toolCall =
@@ -671,7 +666,7 @@ Never invent contacts or phone numbers.
                 "llm",
 
             message:
-                limitWords(
+                voiceReply(
                     args.message,
                     90
                 ),
@@ -787,7 +782,7 @@ Never invent contacts or phone numbers.
 
 
         return await searchWeb(
-            query
+            query, client, Math.max(1, 16500 - (Date.now() - started))
         );
     }
 
@@ -809,7 +804,7 @@ Never invent contacts or phone numbers.
                 "ask_user",
 
             message:
-                args.message ||
+                voiceReply(args.message) ||
                 "Could you tell me a little more?",
         };
     }
@@ -832,7 +827,7 @@ Never invent contacts or phone numbers.
                 "unsupported",
 
             message:
-                args.message ||
+                voiceReply(args.message) ||
                 "I can't do that yet.",
         };
     }
@@ -889,7 +884,7 @@ Never invent contacts or phone numbers.
 // ============================================================
 
 async function searchWeb(
-    query
+    query, client = groq, budgetMs = 16500
 ) {
 
     /*
@@ -917,14 +912,8 @@ async function searchWeb(
 
     try {
 
-        const response =
-            await groq
-                .chat
-                .completions
-                .create({
-
-                    model:
-                        "openai/gpt-oss-20b",
+        const { data: response } =
+            await completeWithFallback({
 
                     reasoning_effort:
                         "low",
@@ -949,7 +938,7 @@ Rules:
 
 - Maximum 90 words.
 - Prefer 2-4 sentences.
-- No markdown headings.
+- Plain text only: no markdown, tables, emojis or emoji descriptions.
 - No long lists.
 - Do not mention that you are an AI.
 - Avoid reading URLs aloud.
@@ -975,7 +964,7 @@ Rules:
 
                     tool_choice:
                         "required",
-                });
+                }, { client, models: browserSearchModels(), budgetMs });
 
 
         const answer =
@@ -1005,13 +994,14 @@ Rules:
                 "web",
 
             message:
-                limitWords(
+                voiceReply(
                     answer,
                     90
                 ),
         };
 
     } catch (error) {
+        if (error instanceof GroqUnavailableError) throw error;
 
         console.error(
             "WEB SEARCH ERROR:",
@@ -1030,43 +1020,4 @@ Rules:
                 "I couldn't access live web information right now.",
         };
     }
-}
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-function limitWords(
-    value,
-    maximum
-) {
-
-    const text =
-        String(
-            value || ""
-        ).trim();
-
-
-    const words =
-        text.split(/\s+/);
-
-
-    if (
-        words.length <=
-        maximum
-    ) {
-
-        return text;
-    }
-
-
-    return (
-        words
-            .slice(
-                0,
-                maximum
-            )
-            .join(" ") +
-        "..."
-    );
 }
